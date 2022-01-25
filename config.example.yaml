@@ -1,0 +1,4 @@
+discord_token: DISCORD_TOKEN_HERE
+timezone: America/New_York (optional, defaults to host timezone)
+admin_ids:
+  - ADMIN_USER_ID_HERE
