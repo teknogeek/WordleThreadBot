@@ -5,7 +5,7 @@ import pytz
 
 
 class BotClient(discord.Client):
-  admin_ids: list[int] = []
+  admin_ids: list = []
   timezone = datetime.now().astimezone().tzinfo
 
   async def on_ready(self):
