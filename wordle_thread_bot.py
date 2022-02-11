@@ -26,14 +26,25 @@ class BotClient(discord.Client):
       return
 
     command_parts = message.content.strip().lower().split(' ')
+    command_part_len = len(command_parts)
 
     if command_parts[0] != '!wordle':
       return
 
-    if len(command_parts) == 1:
+    if command_part_len == 1 or command_parts[1] == 'custom':
+      thread_prefix = 'wordle'
+      if command_part_len > 1 and command_parts[1] == 'custom':
+        if command_part_len != 3:
+          await message.reply('Usage: !wordle custom <name>')
+          return
+
+        thread_prefix = command_parts[2]
+
+      thread_prefix = thread_prefix.title()
+
       today = datetime.now(self.timezone).date()
       start_date = datetime(2021, 6, 19, tzinfo=self.timezone).date()
-      wordle_num = (today - start_date).days
+      thread_num = (today - start_date).days
 
       message_channel = message.channel
       if isinstance(message_channel, discord.Thread):
@@ -43,20 +54,20 @@ class BotClient(discord.Client):
         if thread.archived:
           continue
 
-        if f'wordle {wordle_num}' in thread.name.lower():
-          await message.reply(f'It looks like there is already a Wordle {wordle_num} thread in this channel: <#{thread.id}>')
+        if f'{thread_prefix} {thread_num}'.lower() in thread.name.lower():
+          await message.reply(f'It looks like there is already a {thread_prefix} {thread_num} thread in this channel: <#{thread.id}>')
           return
 
       spoiler_thread: discord.Thread = await message_channel.create_thread(
-        name=f'Wordle {wordle_num} ({today.strftime("%a %b %e")}) [[SPOILERS]]',
+        name=f'{thread_prefix} {thread_num} ({today.strftime("%a %b %e")}) [[SPOILERS]]',
         auto_archive_duration=1440,
         type=discord.ChannelType.public_thread,
       )
 
-      await message.channel.send(f'Wordle {wordle_num} Spoiler Thread: <#{spoiler_thread.id}>')
+      await message.channel.send(f'{thread_prefix} {thread_num} Spoiler Thread: <#{spoiler_thread.id}>')
     elif command_parts[1] in ['archive', 'delete']:
-      if len(command_parts) != 3:
-        await message.reply('Usage: !wordle <delete|archive> <thread|thread ID>')
+      if command_part_len != 3:
+        await message.reply('Usage: !wordle <delete|archive> <#thread|thread ID>')
         return
 
       thread_id = -1
@@ -99,7 +110,8 @@ class BotClient(discord.Client):
     elif command_parts[1] == 'help':
       await message.reply('\n'.join([
         '**Thread Creation**: !wordle',
-        '**Thread Management**: !wordle <delete|archive> <thread|thread ID>'
+        '**Thread Creation (Custom Game)**: !wordle custom <name>',
+        '**Thread Management**: !wordle <delete|archive> <#thread|thread ID>'
       ]))
       return
 
