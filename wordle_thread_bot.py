@@ -1,7 +1,8 @@
 import discord
-import yaml
 from datetime import datetime
 import pytz
+from urllib.parse import unquote as urldecode
+import yaml
 
 
 class BotClient(discord.Client):
@@ -34,11 +35,11 @@ class BotClient(discord.Client):
     if command_part_len == 1 or command_parts[1] == 'custom':
       thread_prefix = 'wordle'
       if command_part_len > 1 and command_parts[1] == 'custom':
-        if command_part_len != 3:
+        if command_part_len < 3:
           await message.reply('Usage: !wordle custom <name>')
           return
 
-        thread_prefix = command_parts[2]
+        thread_prefix =  urldecode(' '.join(command_parts[2:]))
 
       thread_prefix = thread_prefix.title()
 
