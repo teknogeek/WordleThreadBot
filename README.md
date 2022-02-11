@@ -30,3 +30,11 @@ To delete a thread entirely, you can do `!wordle delete` (restricted to configur
 
 
 Both `archive` and `delete` can also be called with just a thread ID, i.e. `!wordle archive 123456`
+
+## Wordle-like Games
+
+You can also create threads for Wordle-like daily games (such as [Nerdle](https://nerdlegame.com/)) using `!wordle custom`:
+
+![custom_thread.png](images/custom_thread.png)
+
+The major caveat is that this currently uses the same start date as Wordle, so it may not align with games that have a different date.
