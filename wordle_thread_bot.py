@@ -157,7 +157,9 @@ def main():
     print('ERROR: Missing or invalid admin_ids in config.yaml')
     exit(1)
 
-  bot_client = BotClient()
+  intents = discord.Intents.default()
+  intents.message_content = True
+  bot_client = BotClient(intents=intents)
   bot_client.admin_ids = config['admin_ids']
 
   if 'timezone' in config:

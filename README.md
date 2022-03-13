@@ -17,6 +17,8 @@ aka
 - Manage Messages
 - Manage Threads
 
+You will also need to enable the `Message Content` privileged intent: https://support-dev.discord.com/hc/en-us/articles/4404772028055
+
 ## Bot Usage
 
 You can create a new daily wordle thread with `!wordle`:
