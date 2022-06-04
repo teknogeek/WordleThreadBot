@@ -1,0 +1,2 @@
+- add `!wordle register` to register various wordle games with different start dates and names
+- auto-archive threads at 12am in configurable "last" timezone (default to 12am PT)

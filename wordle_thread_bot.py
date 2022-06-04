@@ -50,7 +50,7 @@ class BotClient(discord.Client):
       return
 
     command_parts = message.content.strip().split()
-    if command_parts[0] != COMMAND_PREFIX:
+    if len(command_parts) == 0 or command_parts[0] != COMMAND_PREFIX:
       return
 
     try:
