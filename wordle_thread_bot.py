@@ -1,175 +1,109 @@
-import argparse
-import discord
+import interactions
 from datetime import datetime
 import pytz
 from urllib.parse import unquote as urldecode
 import yaml
 
+# start
+config = yaml.safe_load(open('config.yaml').read())
+if 'discord_token' not in config or \
+  not isinstance(config['discord_token'], str) or \
+    config['discord_token'].strip() == '':
+  print('ERROR: Missing or invalid discord_token in config.yaml')
+  exit(1)
 
-COMMAND_PREFIX = '!wordle'
+if 'guild_id' not in config or not isinstance(config['guild_id'], int):
+  print('ERROR: Missing guild_id config.yaml')
+  exit(1)
 
-parser = argparse.ArgumentParser(prog=COMMAND_PREFIX, add_help=False, exit_on_error=False)
-subparsers = parser.add_subparsers(dest='subcommand', title='subcommands')
+bot = interactions.Client(
+  token=config['discord_token'].strip(),
+  default_scope=config['guild_id']
+)
 
-custom_parser = subparsers.add_parser('custom', help='Create a custom thread', add_help=False, usage='%(prog)s name [...]')
-custom_parser.add_argument('name', nargs=argparse.REMAINDER)
+timezone = datetime.now().astimezone().tzinfo
 
-thread_arg = {
-  'dest': 'thread',
-  'action': 'store',
-  'help': 'Direct #thread mention or thread ID',
-  'nargs': argparse.OPTIONAL
-}
-archive_parser = subparsers.add_parser('archive', help='Archive a thread', add_help=False)
-archive_parser.add_argument(**thread_arg)
-
-delete_parser = subparsers.add_parser('delete', help='Delete a thread', add_help=False)
-delete_parser.add_argument(**thread_arg)
-
-help_parser = subparsers.add_parser('help', help='Display help', add_help=False)
-help_parser.add_argument('name', nargs=argparse.OPTIONAL, help='Command to show help for')
-
-class BotClient(discord.Client):
-  admin_ids: list = []
-  timezone = datetime.now().astimezone().tzinfo
-
-  async def on_ready(self):
-    print(f'Logged in as: {self.user} | Timezone: {self.timezone}')
-
-  async def on_message(self, message: discord.Message):
-    print(f'[#{message.channel}] <@{message.author}> {message.content}')
-
-    if message.author.bot:
-      if message.author.id != self.user.id:
-        return
-
-      if message.type != discord.MessageType.thread_created:
-        return
-
-      await message.delete()
-      return
-
-    command_parts = message.content.strip().split()
-    if len(command_parts) == 0 or command_parts[0] != COMMAND_PREFIX:
-      return
-
-    try:
-      args = parser.parse_args(command_parts[1:])
-    except Exception as e:
-      await message.reply(f'Error parsing command input: {e}')
-      return
-
-    match args.subcommand:
-      case 'custom' if len(args.name) == 0:
-        await message.reply(custom_parser.format_usage())
-
-      case None | 'custom':
-        thread_prefix = 'wordle'
-        if args.subcommand == 'custom':
-          thread_prefix =  urldecode(' '.join(args.name))
-        thread_prefix = thread_prefix.title()
-
-        today = datetime.now(self.timezone).date()
-        start_date = datetime(2021, 6, 19, tzinfo=self.timezone).date()
-        thread_num = (today - start_date).days
-
-        message_channel = message.channel
-        if isinstance(message_channel, discord.Thread):
-          message_channel = message_channel.parent
-
-        for thread in message_channel.threads:
-          if thread.archived:
-            continue
-
-          if f'{thread_prefix} {thread_num}'.lower() in thread.name.lower():
-            await message.reply(f'It looks like there is already a {thread_prefix} {thread_num} thread in this channel: <#{thread.id}>')
-            return
-
-        spoiler_thread: discord.Thread = await message_channel.create_thread(
-          name=f'{thread_prefix} {thread_num} ({today.strftime("%a %b %e")}) [[SPOILERS]]',
-          auto_archive_duration=1440,
-          type=discord.ChannelType.public_thread,
-        )
-        await message.channel.send(f'{thread_prefix} {thread_num} Spoiler Thread: <#{spoiler_thread.id}>')
-
-      case 'archive' | 'delete':
-        thread_id = -1
-        if args.thread is None and isinstance(message.channel, discord.Thread):
-          thread_id = message.channel.id
-        else:
-          try:
-            thread_id = int(args.thread)
-          except ValueError:
-            thread_id = int(args.thread.replace('<', '').replace('>', '').replace('#', ''))
-
-        if thread_id == -1:
-          await message.reply('Invalid thread')
-          return
-
-        thread: discord.Thread = message.guild.get_thread(thread_id)
-        if thread is None:
-          archived_threads = await message.channel.archived_threads().flatten()
-          for t in archived_threads:
-            if t.id == thread_id:
-              thread = t
-              break
-
-        if thread is None:
-          await message.reply(f'Unable to find thread by ID: {thread_id}')
-          print(await message.channel.archived_threads().flatten())
-          return
-
-        match args.subcommand:
-          case 'archive' if thread.archived:
-            await message.reply(f'Thread is already archived: <#{thread.id}>')
-          case 'archive':
-            await thread.edit(archived=True)
-            if args.thread is not None:
-              await message.reply(f'Thread archived: <#{thread.id}>')
-          case 'delete' if message.author.id not in self.admin_ids:
-            await message.reply('You are not authorized to delete threads')
-          case 'delete':
-            await thread.delete()
-            if args.thread is not None:
-              await message.reply('Thread deleted')
-
-      case 'help':
-        if args.name:
-          await message.reply(subparsers.choices[args.name].format_help())
-        else:
-          await message.reply(parser.format_help())
-
-      case _:
-        await message.reply(f'Unhandled subcommand: {args.subcommand}')
-
-  async def on_thread_join(self, thread):
-    print(thread)
-
-def main():
-  config = yaml.safe_load(open('config.yaml').read())
-  if 'discord_token' not in config or \
-    not isinstance(config['discord_token'], str) or \
-      config['discord_token'].strip() == '':
-    print('ERROR: Missing or invalid discord_token in config.yaml')
+if 'timezone' in config:
+  try:
+    timezone = pytz.timezone(config['timezone'])
+  except pytz.UnknownTimeZoneError:
+    print('ERROR: Provided invalid timezone in config.yaml')
     exit(1)
 
-  if 'admin_ids' not in config or not isinstance(config['admin_ids'], list):
-    print('ERROR: Missing or invalid admin_ids in config.yaml')
-    exit(1)
+WORDLE_START_DATE = datetime(2021, 6, 19, tzinfo=timezone).date()
 
-  intents = discord.Intents.default()
-  intents.message_content = True
-  bot_client = BotClient(intents=intents)
-  bot_client.admin_ids = config['admin_ids']
+@bot.event
+async def on_start():
+  print(f"[+] Connected | Timezone: {timezone}")
 
-  if 'timezone' in config:
-    try:
-      bot_client.timezone = pytz.timezone(config['timezone'])
-    except pytz.UnknownTimeZoneError:
-      print('ERROR: Provided invalid timezone in config.yaml')
-      exit(1)
+# auto delete "New Thread Created" message to prevent spoilers
+@bot.event
+async def on_message_create(msg):
+  if msg.author.id != bot.me.id:
+    return
 
-  bot_client.run(config['discord_token'].strip())
+  if msg.type != interactions.MessageType.THREAD_CREATED:
+    return
 
-if __name__ == '__main__':
-  main()
+  print('[+] Deleting thread creation message...')
+  await msg.delete()
+
+
+@bot.command(name="wordle")
+async def wordle_create(ctx: interactions.CommandContext):
+  """Create a new wordle thread"""
+  await create_game_thread(ctx, WORDLE_START_DATE, "wordle")
+
+@bot.command(
+  name="custom",
+  options=[
+    interactions.Option(
+      name="name",
+      description="Name of game",
+      type=interactions.OptionType.STRING,
+      required=True,
+    ),
+    interactions.Option(
+      name="start_date",
+      description="Start date for the custom game (MM/DD/YYYY)",
+      type=interactions.OptionType.STRING,
+      required=False,
+    ),
+  ],
+)
+async def wordle_custom(ctx: interactions.CommandContext, name: str, start_date: str = None):
+  """Create a custom Wordle-like game thread"""
+  if start_date is None:
+    start_date = WORDLE_START_DATE
+  else:
+    start_date = datetime.strptime(start_date, "%m/%d/%Y").replace(tzinfo=timezone).date()
+
+  await create_game_thread(ctx, start_date, urldecode(name))
+
+async def create_game_thread(ctx: interactions.CommandContext, start_date, prefix: str):
+  prefix = prefix.title()
+  today = datetime.now(timezone).date()
+  thread_num = (today - start_date).days
+
+  message_channel = ctx.channel
+  if isinstance(message_channel, interactions.Thread):
+    message_channel = await ctx.client.get_channel(message_channel.parent_id)
+
+  for thread in await ctx.guild.get_all_active_threads():
+    if thread.parent_id != message_channel.id:
+      continue
+
+    if f'{prefix} {thread_num}'.lower() in thread.name.lower():
+      await ctx.send(f'It looks like there is already a {prefix} {thread_num} thread in this channel: <#{thread.id}>')
+      return
+
+  print(f'[+] Creating {prefix} {thread_num} thread...')
+  spoiler_thread: interactions.Thread = await message_channel.create_thread(
+    name=f'{prefix} {thread_num} ({today.strftime("%a %b %e")}) [[SPOILERS]]',
+    auto_archive_duration=1440,
+    type=interactions.ChannelType.GUILD_PUBLIC_THREAD,
+  )
+
+  await ctx.send(f'{prefix} {thread_num} Spoiler Thread: <#{spoiler_thread.id}>')
+
+bot.start()

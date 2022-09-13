@@ -1,6 +1,6 @@
 # WordleThreadBot
 
-A discord bot for creating daily [Wordle](https://www.powerlanguage.co.uk/wordle/) discussion spoiler threads
+A discord bot for creating daily [Wordle](https://www.nytimes.com/games/wordle/index.html) discussion spoiler threads
 
 ## How to run
 
@@ -21,22 +21,8 @@ You will also need to enable the `Message Content` privileged intent: https://su
 
 ## Bot Usage
 
-You can create a new daily wordle thread with `!wordle`:
-![new_thread.png](images/new_thread.png)
-
-To force a thread to be archived, you can do `!wordle archive`:
-![archive_thread.png](images/archive_thread.png)
-
-To delete a thread entirely, you can do `!wordle delete` (restricted to configured admins):
-![delete_thread.png](images/delete_thread.png)
-
-
-Both `archive` and `delete` can also be called with just a thread ID, i.e. `!wordle archive 123456`
+You can create a new daily wordle thread with `/wordle`.
 
 ## Wordle-like Games
 
-You can also create threads for Wordle-like daily games (such as [Nerdle](https://nerdlegame.com/)) using `!wordle custom`:
-
-![custom_thread.png](images/custom_thread.png)
-
-The major caveat is that this currently uses the same start date as Wordle, so it may not align with games that have a different date.
+You can also create threads for Wordle-like daily games (such as [Nerdle](https://nerdlegame.com/)) using `/custom`. You can optionally provide a start date as well, if it's different from Wordle.

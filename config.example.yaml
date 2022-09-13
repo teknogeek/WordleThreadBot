@@ -1,5 +1,4 @@
 discord_token: DISCORD_TOKEN_HERE
 # optional, defaults to host machine timezone
 timezone: America/New_York
-admin_ids:
-  - ADMIN_USER_ID_HERE
+guild_id: GUILD_ID_HERE
