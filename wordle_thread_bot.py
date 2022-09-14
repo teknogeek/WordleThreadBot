@@ -1,3 +1,4 @@
+import asyncio
 import interactions
 from datetime import datetime
 import pytz
@@ -31,6 +32,8 @@ if 'timezone' in config:
     exit(1)
 
 WORDLE_START_DATE = datetime(2021, 6, 19, tzinfo=timezone).date()
+DELETION_QUEUE = {}
+DELETION_LOCK = asyncio.Lock()
 
 @bot.event
 async def on_start():
@@ -38,15 +41,30 @@ async def on_start():
 
 # auto delete "New Thread Created" message to prevent spoilers
 @bot.event
-async def on_message_create(msg):
+async def on_message_create(msg: interactions.Message):
+  global DELETION_QUEUE, DELETION_LOCK
+
   if msg.author.id != bot.me.id:
     return
 
   if msg.type != interactions.MessageType.THREAD_CREATED:
     return
 
-  print('[+] Deleting thread creation message...')
-  await msg.delete()
+  async with DELETION_LOCK:
+    if DELETION_QUEUE.get((msg_id := msg.id), False):
+      return
+
+    DELETION_QUEUE[msg_id] = True
+    print('[+] Deleting thread creation message...')
+    await msg.delete()
+
+# Clear deleted messages from queue
+@bot.event
+async def on_message_delete(msg: interactions.Message):
+  if not DELETION_QUEUE.get(msg.id, False):
+    return
+
+  print('[+] Thread creation message deleted')
 
 
 @bot.command(name="wordle")
