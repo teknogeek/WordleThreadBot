@@ -1,20 +1,28 @@
 import asyncio
-import interactions
 from datetime import datetime
+import interactions
 import pytz
 from urllib.parse import unquote as urldecode
 import yaml
 
-# start
+# logging
+import logging
+logging.basicConfig(
+    format='[%(asctime)s.%(msecs)d] %(levelname)-8s %(message)s',
+    level=logging.INFO,
+    datefmt='%Y-%m-%d %H:%M:%S')
+
+
+# load config
 config = yaml.safe_load(open('config.yaml').read())
 if 'discord_token' not in config or \
         not isinstance(config['discord_token'], str) or \
         config['discord_token'].strip() == '':
-    print('ERROR: Missing or invalid discord_token in config.yaml')
+    logging.error('Missing or invalid discord_token in config.yaml')
     exit(1)
 
 if 'guild_id' not in config or not isinstance(config['guild_id'], int):
-    print('ERROR: Missing guild_id config.yaml')
+    logging.error('Missing guild_id config.yaml')
     exit(1)
 
 bot = interactions.Client(
@@ -28,7 +36,7 @@ if 'timezone' in config:
     try:
         timezone = pytz.timezone(config['timezone'])
     except pytz.UnknownTimeZoneError:
-        print('ERROR: Provided invalid timezone in config.yaml')
+        logging.error('Provided invalid timezone in config.yaml')
         exit(1)
 
 WORDLE_START_DATE = datetime(2021, 6, 19, tzinfo=timezone).date()
@@ -38,13 +46,12 @@ DELETION_LOCK = asyncio.Lock()
 
 @bot.event
 async def on_start():
-    print(f"[+] Connected | Timezone: {timezone}")
-
-# auto delete "New Thread Created" message to prevent spoilers
+    logging.info("Connected")
 
 
 @bot.event
 async def on_message_create(msg: interactions.Message):
+    # Auto delete "New Thread Created" message to prevent spoilers
     global DELETION_QUEUE, DELETION_LOCK
 
     if msg.author.id != bot.me.id:
@@ -58,18 +65,17 @@ async def on_message_create(msg: interactions.Message):
             return
 
         DELETION_QUEUE[msg_id] = True
-        print('[+] Deleting thread creation message...')
+        logging.info('Deleting thread creation message...')
         await msg.delete()
-
-# Clear deleted messages from queue
 
 
 @bot.event
 async def on_message_delete(msg: interactions.Message):
+    # Clear deleted messages from queue
     if not DELETION_QUEUE.get(msg.id, False):
         return
 
-    print('[+] Thread creation message deleted')
+    logging.info('Thread creation message deleted')
 
 
 @bot.command(name="wordle")
@@ -123,7 +129,7 @@ async def create_game_thread(ctx: interactions.CommandContext, start_date, prefi
             await ctx.send(f'It looks like there is already a {prefix} {thread_num} thread in this channel: <#{thread.id}>')
             return
 
-    print(f'[+] Creating {prefix} {thread_num} thread...')
+    logging.info(f'Creating {prefix} {thread_num} thread...')
     spoiler_thread: interactions.Thread = await message_channel.create_thread(
         name=f'{prefix} {thread_num} ({today.strftime("%a %b %e")}) [[SPOILERS]]',
         auto_archive_duration=1440,
