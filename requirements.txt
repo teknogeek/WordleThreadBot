@@ -1,3 +1,4 @@
 discord-py-interactions==4.3.1
+interactions-tasks==1.0.0
 PyYAML==6.0
 pytz==2021.3

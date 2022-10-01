@@ -1,9 +1,14 @@
 import asyncio
 from datetime import datetime
+from aiohttp import ClientConnectorError
 import interactions
 import pytz
+import time
 from urllib.parse import unquote as urldecode
 import yaml
+import signal
+import socket
+
 
 # logging
 import logging
@@ -29,6 +34,7 @@ bot = interactions.Client(
     token=config['discord_token'].strip(),
     default_scope=config['guild_id']
 )
+bot.load('reconnect')
 
 timezone = datetime.now().astimezone().tzinfo
 
@@ -42,10 +48,20 @@ if 'timezone' in config:
 WORDLE_START_DATE = datetime(2021, 6, 19, tzinfo=timezone).date()
 DELETION_QUEUE = {}
 DELETION_LOCK = asyncio.Lock()
+MAX_RETRIES = 15
+
+retries = 0
 
 
 @bot.event
 async def on_start():
+    global retries
+    retries = 0
+    logging.info("Started")
+
+
+@bot.event
+async def on_connect():
     logging.info("Connected")
 
 
@@ -138,4 +154,28 @@ async def create_game_thread(ctx: interactions.CommandContext, start_date, prefi
 
     await ctx.send(f'{prefix} {thread_num} Spoiler Thread: <#{spoiler_thread.id}>')
 
-bot.start()
+EXIT = False
+
+
+def signal_handler(sig, frame):
+    global EXIT
+    EXIT = True
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
+    raise KeyboardInterrupt
+
+
+signal.signal(signal.SIGINT, signal_handler)
+
+while True:
+    if EXIT:
+        break
+    try:
+        bot.start()
+    except (ClientConnectorError, socket.gaierror):
+        logging.warning('Connector error, waiting 5s and restarting...')
+        time.sleep(5)
+
+if EXIT:
+    logging.info('Exiting...')
+else:
+    logging.error('Max retries reached, exiting...')
