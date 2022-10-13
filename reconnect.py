@@ -1,5 +1,4 @@
-from aiohttp import ClientConnectorError
-from interactions import Extension, Client, WebSocketClient
+from interactions import Extension, Client
 from interactions.ext.tasks import IntervalTrigger, create_task
 import logging
 
@@ -15,7 +14,7 @@ class ReconnectExt(Extension):
             logging.debug('Websocket not started yet')
             return
 
-        if not self.client._websocket._closed:
+        if self.client._websocket._client is not None and not self.client._websocket._closed:
             logging.debug('Still connected')
             return
 

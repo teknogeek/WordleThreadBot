@@ -171,7 +171,7 @@ while True:
         break
     try:
         bot.start()
-    except (ClientConnectorError, socket.gaierror):
+    except (ClientConnectorError, socket.gaierror, RuntimeError):
         logging.warning('Connector error, waiting 5s and restarting...')
         time.sleep(5)
 
