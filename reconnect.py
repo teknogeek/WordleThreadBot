@@ -11,18 +11,22 @@ class ReconnectExt(Extension):
 
     @create_task(IntervalTrigger(1))
     async def check_disconnect(self):
-        logging.debug('Checking disconnect status...')
+        logging.debug("Checking disconnect status...")
         if not self.client._websocket._WebSocketClient__started:
-            logging.debug('Websocket not started yet')
+            logging.debug("Websocket not started yet")
             return
 
         if self.client._websocket._client is not None and not self.client._websocket._closed:
-            logging.debug('Still connected')
+            logging.debug("Still connected")
             return
 
         if self.lock.acquire(blocking=False):
             logging.warning("Disconnected, attempting reconnect...")
-            await self.client._websocket.restart()
+            try:
+                await self.client._websocket.restart()
+            except RuntimeError:
+                logging.error("Error trying to restart websocket")
+                pass
             self.lock.release()
 
 def setup(client):
