@@ -1,123 +1,75 @@
 import asyncio
 from datetime import datetime
-from aiohttp import ClientConnectorError
-import interactions
-import pytz
-import time
+from discord import app_commands, utils, ChannelType, Client, Intents, Interaction, Message, MessageType, Object, Thread
 from urllib.parse import unquote as urldecode
 import yaml
-import signal
-import socket
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 # logging
 import logging
-logging.basicConfig(
-    format='[%(asctime)s.%(msecs)d] %(levelname)-8s %(message)s',
-    level=logging.INFO,
-    datefmt='%Y-%m-%d %H:%M:%S')
-
+utils.setup_logging(level=logging.INFO)
 
 # load config
-config = yaml.safe_load(open('config.yaml').read())
-if 'discord_token' not in config or \
-        not isinstance(config['discord_token'], str) or \
-        config['discord_token'].strip() == '':
-    logging.error('Missing or invalid discord_token in config.yaml')
+config = yaml.safe_load(open("config.yaml").read())
+if "discord_token" not in config or \
+        not isinstance(config["discord_token"], str) or \
+        config["discord_token"].strip() == "":
+    logging.error("Missing or invalid discord_token in config.yaml")
     exit(1)
 
-if 'guild_id' not in config or not isinstance(config['guild_id'], int):
-    logging.error('Missing guild_id config.yaml')
+if "admin_role" not in config or \
+        not isinstance(config["admin_role"], str) or \
+        config["admin_role"].strip() == "":
+    logging.error("Missing or invalid admin_role in config.yaml")
     exit(1)
 
-bot = interactions.Client(
-    token=config['discord_token'].strip(),
-    default_scope=config['guild_id']
-)
-bot.load('reconnect')
+intents = Intents.default()
+intents.message_content = True
+
+client = Client(intents=intents)
+tree = app_commands.CommandTree(client)
 
 timezone = datetime.now().astimezone().tzinfo
 
-if 'timezone' in config:
+if "timezone" in config:
     try:
-        timezone = pytz.timezone(config['timezone'])
-    except pytz.UnknownTimeZoneError:
-        logging.error('Provided invalid timezone in config.yaml')
+        timezone = ZoneInfo(config["timezone"])
+    except ZoneInfoNotFoundError:
+        logging.error("Provided invalid timezone in config.yaml")
         exit(1)
 
 WORDLE_START_DATE = datetime(2021, 6, 19, tzinfo=timezone).date()
-DELETION_QUEUE = {}
-DELETION_LOCK = asyncio.Lock()
-MAX_RETRIES = 15
 
-retries = 0
-
-
-@bot.event
-async def on_start():
-    global retries
-    retries = 0
-    logging.info("Started")
-
-
-@bot.event
-async def on_connect():
+@client.event
+async def on_ready():
     logging.info("Connected")
 
-
-@bot.event
-async def on_message_create(msg: interactions.Message):
+@client.event
+async def on_message(msg: Message):
     # Auto delete "New Thread Created" message to prevent spoilers
-    global DELETION_QUEUE, DELETION_LOCK
-
-    if msg.author.id != bot.me.id:
+    if not msg.author.bot:
         return
 
-    if msg.type != interactions.MessageType.THREAD_CREATED:
+    if msg.author.id != client.user.id:
         return
 
-    async with DELETION_LOCK:
-        if DELETION_QUEUE.get((msg_id := msg.id), False):
-            return
-
-        DELETION_QUEUE[msg_id] = True
-        logging.info('Deleting thread creation message...')
-        await msg.delete()
-
-
-@bot.event
-async def on_message_delete(msg: interactions.Message):
-    # Clear deleted messages from queue
-    if not DELETION_QUEUE.get(msg.id, False):
+    if msg.type != MessageType.thread_created:
         return
 
-    logging.info('Thread creation message deleted')
+    logging.info(f"Deleting thread creation message ({msg.id})...")
+    await msg.delete()
 
-
-@bot.command(name="wordle")
-async def wordle_create(ctx: interactions.CommandContext):
+@tree.command(name="wordle")
+async def wordle_create(interaction: Interaction):
     """Create a new wordle thread"""
-    await create_game_thread(ctx, WORDLE_START_DATE, "wordle")
+    await create_game_thread(interaction, WORDLE_START_DATE, "wordle")
 
 
-@bot.command(
-    name="custom",
-    options=[
-        interactions.Option(
-            name="name",
-            description="Name of game",
-            type=interactions.OptionType.STRING,
-            required=True,
-        ),
-        interactions.Option(
-            name="start_date",
-            description="Start date for the custom game (MM/DD/YYYY)",
-            type=interactions.OptionType.STRING,
-            required=False,
-        ),
-    ],
-)
-async def wordle_custom(ctx: interactions.CommandContext, name: str, start_date: str = None):
+@tree.command(name="custom")
+@app_commands.describe(name="Name of game")
+@app_commands.describe(start_date="Start date for the custom game (MM/DD/YYYY)")
+async def wordle_custom(interaction: Interaction, name: str, start_date: str = None):
     """Create a custom Wordle-like game thread"""
     if start_date is None:
         start_date = WORDLE_START_DATE
@@ -125,57 +77,63 @@ async def wordle_custom(ctx: interactions.CommandContext, name: str, start_date:
         start_date = datetime.strptime(
             start_date, "%m/%d/%Y").replace(tzinfo=timezone).date()
 
-    await create_game_thread(ctx, start_date, urldecode(name))
+    await create_game_thread(interaction, start_date, urldecode(name))
 
 
-async def create_game_thread(ctx: interactions.CommandContext, start_date, prefix: str):
+async def create_game_thread(interaction: Interaction, start_date: datetime, prefix: str):
     prefix = prefix.title()
     today = datetime.now(timezone).date()
     thread_num = (today - start_date).days
 
-    message_channel = ctx.channel
-    if isinstance(message_channel, interactions.Thread):
-        message_channel = await ctx.client.get_channel(message_channel.parent_id)
+    message_channel = interaction.channel
+    if isinstance(message_channel, Thread):
+        message_channel = await client.get_channel(message_channel.parent_id)
 
-    for thread in await ctx.guild.get_all_active_threads():
+    for thread in await interaction.guild.active_threads():
         if thread.parent_id != message_channel.id:
             continue
 
-        if f'{prefix} {thread_num}'.lower() in thread.name.lower():
-            await ctx.send(f'It looks like there is already a {prefix} {thread_num} thread in this channel: <#{thread.id}>')
+        if f"{prefix} {thread_num}".lower() in thread.name.lower():
+            await interaction.response.send_message(
+                f"It looks like there is already a {prefix} {thread_num} thread in this channel: <#{thread.id}>"
+            )
             return
 
-    logging.info(f'Creating {prefix} {thread_num} thread...')
-    spoiler_thread: interactions.Thread = await message_channel.create_thread(
-        name=f'{prefix} {thread_num} ({today.strftime("%a %b %e")}) [[SPOILERS]]',
+    logging.info(f"Creating {prefix} {thread_num} thread...")
+    spoiler_thread: Thread = await message_channel.create_thread(
+        name=f"{prefix} {thread_num} ({today.strftime('%a %b %e')}) [[SPOILERS]]",
         auto_archive_duration=1440,
-        type=interactions.ChannelType.GUILD_PUBLIC_THREAD,
+        type=ChannelType.public_thread,
     )
-
-    await ctx.send(f'{prefix} {thread_num} Spoiler Thread: <#{spoiler_thread.id}>')
-
-EXIT = False
+    await interaction.response.send_message(f"{prefix} {thread_num} Spoiler Thread: <#{spoiler_thread.id}>")
 
 
-def signal_handler(sig, frame):
-    global EXIT
-    EXIT = True
-    signal.signal(signal.SIGINT, signal.SIG_DFL)
-    raise KeyboardInterrupt
+@tree.command(name="sync")
+@app_commands.describe(guild_only="Sync commands to only this guild")
+@app_commands.describe(guild_only="Just clear commands")
+@app_commands.checks.has_role(config["admin_role"])
+async def sync_command(interaction: Interaction, guild_only: bool = False, clear: bool = False):
+    """Sync bot commands"""
+    await interaction.response.send_message(f"Syncing to {'guild' if guild_only else 'global'}...", ephemeral=True)
 
+    logging.info("Syncing...")
+    guild = interaction.guild if guild_only else None
+    if guild is not None:
+        tree.clear_commands(guild=guild)
+        if not clear:
+            tree.copy_global_to(guild=guild)
+    await tree.sync(guild=guild)
+    logging.info("Synced")
 
-signal.signal(signal.SIGINT, signal_handler)
+    await interaction.edit_original_response(content="Synced.")
 
-while True:
-    if EXIT:
-        break
-    try:
-        bot.start()
-    except (ClientConnectorError, socket.gaierror, RuntimeError):
-        logging.warning('Connector error, waiting 5s and restarting...')
-        time.sleep(5)
+@sync_command.error
+async def sync_error(interaction: Interaction, error: app_commands.AppCommandError):
+    await interaction.followup.send(error, ephemeral=True)
 
-if EXIT:
-    logging.info('Exiting...')
-else:
-    logging.error('Max retries reached, exiting...')
+async def main():
+    async with client:
+        await client.start(config["discord_token"].strip())
+
+if __name__ == "__main__":
+    asyncio.run(main())
